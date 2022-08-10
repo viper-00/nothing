@@ -1,0 +1,9 @@
+{
+    "Port": "0000",
+    "CollectorEndpoint": "localhost:0000",
+    "AlertEndpoint": "localhost:0000",
+    "CollectorEndpointCACertPath": "",
+    "AlertEndpointCACertPath": "",
+    "LogFileEnabled": true,
+    "LogFilePath": "/etc/nothing/nothing_client.log"
+}
