@@ -2,8 +2,11 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -12,7 +15,8 @@ import (
 
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
-	"github.com/viper-00/nothing/internal/api/api"
+	"github.com/viper-00/nothing/internal/api"
+	"github.com/viper-00/nothing/internal/auth"
 	"github.com/viper-00/nothing/internal/config"
 	"github.com/viper-00/nothing/internal/logger"
 	"google.golang.org/grpc"
@@ -127,9 +131,9 @@ func createClient(config *config.Config) (*grpc.ClientConn, api.MonitorDataServi
 		if err != nil {
 			log.Fatal("cannot load TLS credentials: ", err)
 		}
-		grpc.Dial(config.CollectorEndpoint, grpc.WithTransportCredentials(tlsCreds))
+		conn, err = grpc.Dial(config.CollectorEndpoint, grpc.WithTransportCredentials(tlsCreds))
 	} else {
-		grpc.Dial(config.CollectorEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials))
+		conn, err = grpc.Dial(config.CollectorEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 
 	if err != nil {
@@ -141,4 +145,30 @@ func createClient(config *config.Config) (*grpc.ClientConn, api.MonitorDataServi
 	token := generateToken()
 	ctx, cancel := context.WithTimeout(metadata.NewOutgoingContext(context.Background(), metadata.New(map[string]string{"jwt": token})), time.Second*10)
 	return conn, c, ctx, cancel
+}
+
+func generateToken() string {
+	token, err := auth.GenerateJWT()
+	if err != nil {
+		logger.Log("error", "error generating token: "+err.Error())
+	}
+	return token
+}
+
+func loadTLSCreds(path string) (credentials.TransportCredentials, error) {
+	cert, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	certPool := x509.NewCertPool()
+	if !certPool.AppendCertsFromPEM(cert) {
+		return nil, fmt.Errorf("failed to add server CA cert")
+	}
+
+	tlsConfig := &tls.Config{
+		RootCAs: certPool,
+	}
+
+	return credentials.NewTLS(tlsConfig), nil
 }
