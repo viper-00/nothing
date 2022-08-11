@@ -6,9 +6,11 @@ import (
 )
 
 type Config struct {
-	Port           string
-	LogFileEnabled bool
-	LogFilePath    string
+	Port                        string
+	LogFileEnabled              bool
+	LogFilePath                 string
+	CollectorEndpointCACertPath string
+	CollectorEndpoint           string
 }
 
 func GetConfig(path string) Config {

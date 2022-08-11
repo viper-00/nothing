@@ -1,16 +1,24 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
+	"time"
 
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+	"github.com/viper-00/nothing/internal/api/api"
 	"github.com/viper-00/nothing/internal/config"
 	"github.com/viper-00/nothing/internal/logger"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 type output struct {
@@ -102,5 +110,35 @@ func parseGETForDates(r *http.Request) (int64, int64, error) {
 }
 
 func getMonitorData(serverName string, logType string, from int64, to int64, time int64, config *config.Config, isCustomMetric bool) (string, error) {
+	conn, c, ctx, cancel := createClient(config)
+
 	return "", nil
+}
+
+func createClient(config *config.Config) (*grpc.ClientConn, api.MonitorDataServiceClient, context.Context, context.CancelFunc) {
+	var (
+		conn     *grpc.ClientConn
+		tlsCreds credentials.TransportCredentials
+		err      error
+	)
+
+	if len(config.CollectorEndpointCACertPath) > 0 {
+		tlsCreds, err = loadTLSCreds(config.CollectorEndpointCACertPath)
+		if err != nil {
+			log.Fatal("cannot load TLS credentials: ", err)
+		}
+		grpc.Dial(config.CollectorEndpoint, grpc.WithTransportCredentials(tlsCreds))
+	} else {
+		grpc.Dial(config.CollectorEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials))
+	}
+
+	if err != nil {
+		logger.Log("error", "connection error: "+err.Error())
+		os.Exit(1)
+	}
+
+	c := api.NewMonitorDataServiceClient(conn)
+	token := generateToken()
+	ctx, cancel := context.WithTimeout(metadata.NewOutgoingContext(context.Background(), metadata.New(map[string]string{"jwt": token})), time.Second*10)
+	return conn, c, ctx, cancel
 }
