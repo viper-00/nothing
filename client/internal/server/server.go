@@ -115,8 +115,14 @@ func parseGETForDates(r *http.Request) (int64, int64, error) {
 
 func getMonitorData(serverName string, logType string, from int64, to int64, time int64, config *config.Config, isCustomMetric bool) (string, error) {
 	conn, c, ctx, cancel := createClient(config)
-
-	return "", nil
+	defer conn.Close()
+	defer cancel()
+	monitorData, err := c.HandleMonitorDataRequest(ctx, &api.MonitorDataRequest{ServerName: serverName, LogType: logType, From: from, To: to, Time: time, IsCustomMetric: isCustomMetric})
+	if err != nil {
+		logger.Log("error", "error sending data: "+err.Error())
+		return "", err
+	}
+	return monitorData.MonitorData, nil
 }
 
 func createClient(config *config.Config) (*grpc.ClientConn, api.MonitorDataServiceClient, context.Context, context.CancelFunc) {
