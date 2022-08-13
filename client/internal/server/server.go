@@ -15,6 +15,7 @@ import (
 
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+	"github.com/viper-00/nothing/internal/alertapi"
 	"github.com/viper-00/nothing/internal/api"
 	"github.com/viper-00/nothing/internal/auth"
 	"github.com/viper-00/nothing/internal/config"
@@ -30,6 +31,10 @@ type output struct {
 	Data   interface{}
 }
 
+type IsUp struct {
+	IsUp bool
+}
+
 // Run starts the server in given port
 func Run(port string) {
 	handleRequests(port)
@@ -38,6 +43,17 @@ func Run(port string) {
 func handleRequests(port string) {
 	router := mux.NewRouter().StrictSlash(true)
 	router.HandleFunc("/network", returnNetwork)
+	router.HandleFunc("/agents", returnAgents)
+	router.HandleFunc("/isup", returnIsUp)
+	router.HandleFunc("/system", returnSystem)
+	router.HandleFunc("/memory", returnMemory)
+	router.HandleFunc("/swap", returnSwap)
+	router.HandleFunc("/disks", returnDisks)
+	router.HandleFunc("/proc", returnProc)
+	router.HandleFunc("/processes", returnProcesses)
+	router.HandleFunc("/services", returnServices)
+	router.HandleFunc("/cutsom", returnCustom)
+	router.HandleFunc("/alerts", returnAlerts)
 	router.PathPrefix("/").Handler(http.FileServer(http.Dir("./frontend/")))
 
 	server := http.Server{}
@@ -51,6 +67,65 @@ func handleRequests(port string) {
 
 func returnNetwork(w http.ResponseWriter, r *http.Request) {
 	handleRequest("networks", w, r, false)
+}
+
+func returnAgents(w http.ResponseWriter, r *http.Request) {
+	handleRequestForMeta("agents", w, r)
+}
+
+func returnIsUp(w http.ResponseWriter, r *http.Request) {
+	handleRequestForPing(w, r)
+}
+
+func returnSystem(w http.ResponseWriter, r *http.Request) {
+	handleRequest("system", w, r, false)
+}
+
+func returnMemory(w http.ResponseWriter, r *http.Request) {
+	handleRequest("memory", w, r, false)
+}
+
+func returnSwap(w http.ResponseWriter, r *http.Request) {
+	handleRequest("swap", w, r, false)
+}
+
+func returnDisks(w http.ResponseWriter, r *http.Request) {
+	handleRequest("disks", w, r, false)
+}
+
+func returnProc(w http.ResponseWriter, r *http.Request) {
+	handleRequest("procUsage", w, r, false)
+}
+
+func returnProcesses(w http.ResponseWriter, r *http.Request) {
+	handleRequest("processes", w, r, false)
+}
+
+func returnServices(w http.ResponseWriter, r *http.Request) {
+	handleRequest("services", w, r, false)
+}
+
+func returnCustom(w http.ResponseWriter, r *http.Request) {
+	customMetricName, _ := parseGETForCustomMetricName(r)
+	handleRequest(customMetricName, w, r, true)
+}
+
+func returnAlerts(w http.ResponseWriter, r *http.Request) {
+	config := config.GetConfig("config.json")
+	serverName, _ := parseGETForServerName(r)
+	received, _ := getActiveAlerts(serverName, &config)
+	alertData, err := json.Marshal(received.Alerts)
+	var data interface{}
+	var out output
+	if err != nil {
+		out.Status = "ERR"
+		json.NewEncoder(w).Encode(&out)
+		return
+	}
+	out.Status = "OK"
+	_ = json.Unmarshal(alertData, &data)
+	out.Data = data
+	json.NewEncoder(w).Encode(&out)
 }
 
 func handleRequest(logType string, w http.ResponseWriter, r *http.Request, isCustomMetric bool) {
@@ -73,6 +148,28 @@ func handleRequest(logType string, w http.ResponseWriter, r *http.Request, isCus
 	out.Data = data
 	json.NewEncoder(w).Encode(&out)
 }
+
+func handleRequestForPing(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	config := config.GetConfig("config.json")
+	var out output
+	out.Status = "OK"
+	conn, c, ctx, cancel := createClient(&config)
+	defer conn.Close()
+	defer cancel()
+
+	serverName, _ := parseGETForServerName(r)
+	isActive, err := c.IsUp(ctx, &api.ServerInfo{ServerName: serverName})
+	if err != nil {
+		out.Data = IsUp{IsUp: false}
+		json.NewEncoder(w).Encode(&out)
+		return
+	}
+	out.Data = IsUp{IsUp: isActive.IsUp}
+	json.NewEncoder(w).Encode(&out)
+}
+
+func handleRequestForMeta(metaType string, w http.ResponseWriter, r *http.Request) {}
 
 func parseGETForServerName(r *http.Request) (string, error) {
 	serverIdArr, ok := r.URL.Query()["serverId"]
@@ -177,4 +274,54 @@ func loadTLSCreds(path string) (credentials.TransportCredentials, error) {
 	}
 
 	return credentials.NewTLS(tlsConfig), nil
+}
+
+func parseGETForCustomMetricName(r *http.Request) (string, error) {
+	customMetricNameArr, ok := r.URL.Query()["custom-metric"]
+	if !ok {
+		return "", fmt.Errorf("error parsing get vars")
+	}
+
+	if len(customMetricNameArr) == 0 {
+		return "", fmt.Errorf("error parsing get vars")
+	}
+
+	return customMetricNameArr[0], nil
+}
+
+func getActiveAlerts(serverName string, config *config.Config) (*alertapi.AlertArray, error) {
+	var (
+		conn     *grpc.ClientConn
+		tlsCreds credentials.TransportCredentials
+		err      error
+	)
+
+	if len(config.AlertEndpointCACertPath) > 0 {
+		tlsCreds, err = loadTLSCreds(config.AlertEndpointCACertPath)
+		if err != nil {
+			log.Fatal("cannot load TLS credentials: ", err)
+		}
+		conn, err = grpc.Dial(config.AlertEndpoint, grpc.WithTransportCredentials(tlsCreds))
+	} else {
+		conn, err = grpc.Dial(config.AlertEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	}
+
+	if err != nil {
+		logger.Log("error", "connection error: "+err.Error())
+		os.Exit(1)
+	}
+
+	token := generateToken()
+	c := alertapi.NewAlertServiceClient(conn)
+	ctx, cancel := context.WithTimeout(metadata.NewOutgoingContext(context.Background(), metadata.New(map[string]string{"jwt": token})), time.Second*10)
+	defer conn.Close()
+	defer cancel()
+
+	alerts, err := c.AlertRequest(ctx, &alertapi.Request{ServerName: serverName})
+	if err != nil {
+		logger.Log("error", "error sending data: "+err.Error())
+		return &alertapi.AlertArray{}, err
+	}
+
+	return alerts, nil
 }

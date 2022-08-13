@@ -11,6 +11,8 @@ type Config struct {
 	LogFilePath                 string
 	CollectorEndpointCACertPath string
 	CollectorEndpoint           string
+	AlertEndpointCACertPath     string
+	AlertEndpoint               string
 }
 
 func GetConfig(path string) Config {
