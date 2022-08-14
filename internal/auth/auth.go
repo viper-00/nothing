@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt"
+	"github.com/viper-00/nothing/internal/logger"
 )
 
 func GenerateJWT() (string, error) {
@@ -65,4 +66,20 @@ func keyGen() string {
 		panic(err)
 	}
 	return base64.StdEncoding.EncodeToString(key)
+}
+
+func ValidToken(token string) bool {
+	t, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("error with method")
+		}
+		return []byte(GetKey()), nil
+	})
+
+	if err != nil {
+		logger.Log("Auth Error", err.Error())
+		return false
+	}
+
+	return t.Valid
 }
