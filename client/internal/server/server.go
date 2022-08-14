@@ -169,7 +169,40 @@ func handleRequestForPing(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(&out)
 }
 
-func handleRequestForMeta(metaType string, w http.ResponseWriter, r *http.Request) {}
+func handleRequestForMeta(metaType string, w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Content-Type", "application/json")
+	config := config.GetConfig("config.json")
+	var out output
+	out.Status = "OK"
+	conn, c, ctx, cancel := createClient(&config)
+	defer conn.Close()
+	defer cancel()
+
+	var meta *api.Message
+	var err error
+
+	switch metaType {
+	case "agents":
+		meta, err = c.HandleAgentIdsRequest(ctx, &api.Void{})
+	case "customMetricNames":
+		serverName, _ := parseGETForServerName(r)
+		meta, err = c.HandleCustomMetricNameRequest(ctx, &api.ServerInfo{ServerName: serverName})
+	default:
+		break
+	}
+
+	if err != nil {
+		out.Status = "ERR"
+		out.Data = err.Error()
+		json.NewEncoder(w).Encode(&out)
+		return
+	}
+
+	var data interface{}
+	_ = json.Unmarshal([]byte(meta.Body), &data)
+	out.Data = data
+	json.NewEncoder(w).Encode(&out)
+}
 
 func parseGETForServerName(r *http.Request) (string, error) {
 	serverIdArr, ok := r.URL.Query()["serverId"]
