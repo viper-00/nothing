@@ -87,7 +87,7 @@ func main() {
 			tlsCreds, err := loadTLSCreds(&config)
 			if err != nil {
 				log.Fatal("cannot load TLS credentials: ", err)
-				log.Fatalf("failed to load TLS cert %s, key %s: %v", config.KeyPath, config.KeyPath, err)
+				// log.Fatalf("failed to load TLS cert %s, key %s: %v", config.KeyPath, config.KeyPath, err)
 			}
 			grpcServer = grpc.NewServer(grpc.Creds(tlsCreds), grpc.UnaryInterceptor(authInterceptor))
 		} else {
