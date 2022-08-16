@@ -88,3 +88,21 @@ func (mysql *MySql) RemoveAgent(agentID string) error {
 	_, err = stmt.Exec(agentID)
 	return err
 }
+
+func (mysql *MySql) ClearAllAlertsWithNullEnd() error {
+	query := "UPDATE alert SET end_log_id = 0 WHERE end_log_id IS NULL"
+	stmt, err := mysql.DB.Prepare(query)
+	if err != nil {
+		mysql.SqlErr = err
+		logger.Log("ERROR", err.Error())
+		return err
+	}
+	defer stmt.Close()
+	_, err = stmt.Exec()
+	if err != nil {
+		mysql.SqlErr = err
+		logger.Log("ERROR", err.Error())
+		return err
+	}
+	return nil
+}
