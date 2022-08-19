@@ -106,3 +106,72 @@ func (mysql *MySql) ClearAllAlertsWithNullEnd() error {
 	}
 	return nil
 }
+
+func (mysql *MySql) GetLogFromDBWithId(serverName, logType, logName string, from, to int64) [][]string {
+	serverId := mysql.getServerId(serverName)
+	if from > 0 && to > 0 {
+		query := "SELECT id, log_text FROM system_metrics WHERE server_id = ? AND log_type = ? AND log_name = ? AND log_time BETWEEN ? AND ? ORDER BY log_time"
+		res, _ := mysql.Select(query, serverId, logType, logName, from, to)
+		return res.Data
+	} else {
+		query := "SELECT id, log_text FROM system_metrics WHERE server_id = ? AND log_type = ? AND log_name = ? ORDER BY log_time DESC LIMIT 1"
+		res, _ := mysql.Select(query, serverId, logType, logName)
+		return res.Data
+	}
+}
+
+func (mysql *MySql) getServerId(serverName string) string {
+	res := mysql.monitorDataSelect("SELECT id FROM server WHERE name = ?", serverName)
+	if len(res) == 0 {
+		return ""
+	}
+	return res[0]
+}
+
+func (mysql *MySql) Select(query string, args ...interface{}) (Table, error) {
+	table := Table{}
+	row, err := mysql.DB.Query(query, args...)
+	if err != nil {
+		return table, err
+	}
+	defer row.Close()
+
+	columns, err := row.Columns()
+	mysql.SqlErr = err
+	if err != nil {
+		return table, err
+	}
+
+	output := make([][]string, 0)
+	rawResult := make([][]byte, len(columns))
+	dest := make([]interface{}, len(columns))
+	for i := range rawResult {
+		dest[i] = &rawResult[i]
+	}
+
+	for row.Next() {
+		row.Scan(dest...)
+		res := make([]string, 0)
+		for _, raw := range rawResult {
+			if raw != nil {
+				res = append(res, string(raw))
+			}
+		}
+		output = append(output, res)
+	}
+
+	table.Headers = columns
+	table.Data = output
+	return table, mysql.SqlErr
+}
+
+func (mysql *MySql) GetAlertByStartEvent(logId string) []string {
+	t, err := mysql.Select("SELECT * FROM alert WHERE start_log_id = ?", logId)
+	if err != nil {
+		logger.Log("error", err.Error())
+	}
+	if len(t.Data) == 0 {
+		return nil
+	}
+	return t.Data[0]
+}
