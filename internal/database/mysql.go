@@ -4,8 +4,10 @@ import (
 	"database/sql"
 	"strconv"
 
+	"github.com/viper-00/nothing/internal/alertstatus"
 	"github.com/viper-00/nothing/internal/fileops"
 	"github.com/viper-00/nothing/internal/logger"
+	"github.com/viper-00/nothing/internal/monitor"
 )
 
 type MySql struct {
@@ -174,4 +176,37 @@ func (mysql *MySql) GetAlertByStartEvent(logId string) []string {
 		return nil
 	}
 	return t.Data[0]
+}
+
+func (mysql *MySql) GetPreviousOpenAlert(alertStatus *alertstatus.AlertStatus) []string {
+	serverId := mysql.getServerId(alertStatus.Server)
+	query := "SELECT * FROM alert As a JOIN system_metrics As m ON a.start_log_id = m.id WHERE a.end_log_id IS NULL AND a.time < ? AND a.server_id = ? AND m.log_type = ?"
+
+	if alertStatus.Alert.MetricName == monitor.DISKS || alertStatus.Alert.MetricName == monitor.NETWORKS || alertStatus.Alert.MetricName == monitor.SERVICES {
+		query += "AND m.log_name = ?"
+	}
+
+	var (
+		table Table
+		err   error
+	)
+
+	switch alertStatus.Alert.MetricName {
+	case monitor.DISKS:
+		table, err = mysql.Select(query, alertStatus.UnixTime, serverId, alertStatus.Alert.MetricName, alertStatus.Alert.Disk)
+	case monitor.SERVICES:
+		table, err = mysql.Select(query, alertStatus.UnixTime, serverId, alertStatus.Alert.MetricName, alertStatus.Alert.Servers)
+	default:
+		table, err = mysql.Select(query, alertStatus.UnixTime, serverId, alertStatus.Alert.MetricName)
+	}
+
+	if err != nil {
+		logger.Log("error", "GetPreviousOpenAlert"+err.Error())
+	}
+
+	if len(table.Data) == 0 {
+		return nil
+	}
+
+	return table.Data[0]
 }

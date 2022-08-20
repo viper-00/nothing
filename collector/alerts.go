@@ -77,7 +77,45 @@ func processAlert(alert *alerts.AlertConfig, server string, config *config.Confi
 		return
 	}
 
-	logger.Log(metricName, metricName)
+	previousAlert := mysql.GetPreviousOpenAlert(&alertStatus)
+	if previousAlert != nil {
+		if alertStatus.Type != alertstatus.Warning && alertStatus.Type != alertstatus.Critical {
+			res := incidentTracker.Tables["alerts"].Where("server_name", "==", server).Add("metric_type", "==", metricType).Add("status", "==", int(alertstatus.Normal))
+
+			if metricType == monitor.DISKS || metricType == monitor.SERVICES {
+				res = res.Add("metric_name", "==", metricName)
+			}
+
+			if res.RowCount == 0 {
+				err := incidentTracker.Tables["alert"].Insert("server_name, metric_type, metric_name, time, value, status", server, metricType, metricName, alertStatus.UnixTime, alertStatus.Value, int(alertstatus.Normal))
+				if err != nil {
+					logger.Log("error", "memdb: "+err.Error())
+				}
+				return
+			}
+
+			prevTime, err := strconv.ParseInt(res.Rows[0].Columns["time"].StringVal, 10, 64)
+			if err != nil {
+				logger.Log("error", err.Error())
+			}
+
+			currentTime, err := strconv.ParseInt(alertStatus.UnixTime, 10, 64)
+			if err != nil {
+				logger.Log("error", err.Error())
+			}
+
+			if (currentTime - prevTime) >= int64(alertStatus.Alert.TriggerInterval) {
+				err = mysql.SetAlertEndLog(&alertStatus, previousAlert[6])
+				// queue an alert resolved
+				sendAlert(buildAlertToSend(server, alert, alertStatus), config)
+				if err != nil {
+					logger.Log("error", "Error updating alert: "+err.Error())
+				}
+				res.Delete()
+				return
+			}
+		}
+	}
 }
 
 func buildAlertStatus(alert *alerts.AlertConfig, server *string, config *config.Config, mysql *database.MySql) alertstatus.AlertStatus {
