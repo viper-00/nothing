@@ -17,6 +17,7 @@ type Config struct {
 	CertPath                string
 	AlertEndpoint           string
 	AlertEndpointCACertPath string
+	DataRetentionDays       int32
 }
 
 func GetConfig(path string) Config {

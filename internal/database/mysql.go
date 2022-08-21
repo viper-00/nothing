@@ -302,3 +302,25 @@ func (mysql *MySql) AddAlert(alertStatus *alertstatus.AlertStatus) error {
 
 	return nil
 }
+
+func (mysql *MySql) PurgeMonitorDataOlderThan(unixTime string) (int64, error) {
+	query := "DELETE FROM system_metrics WHERE log_time < ?"
+
+	stmt, err := mysql.DB.Prepare(query)
+	if err != nil {
+		mysql.SqlErr = err
+		logger.Log("ERROR", err.Error())
+		return -1, err
+	}
+
+	defer stmt.Close()
+
+	res, err := stmt.Exec(unixTime)
+	if err != nil {
+		mysql.SqlErr = err
+		logger.Log("ERROR", err.Error())
+		return -1, err
+	}
+
+	return res.RowsAffected()
+}
