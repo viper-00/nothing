@@ -6,15 +6,17 @@ import (
 )
 
 type Config struct {
-	LogFileEnabled    bool
-	LogFilePath       string
-	Port              string
-	MySQLHost         string
-	MySQLUserName     string
-	MySQLDatabaseName string
-	TLSEnabled        bool
-	KeyPath           string
-	CertPath          string
+	LogFileEnabled          bool
+	LogFilePath             string
+	Port                    string
+	MySQLHost               string
+	MySQLUserName           string
+	MySQLDatabaseName       string
+	TLSEnabled              bool
+	KeyPath                 string
+	CertPath                string
+	AlertEndpoint           string
+	AlertEndpointCACertPath string
 }
 
 func GetConfig(path string) Config {

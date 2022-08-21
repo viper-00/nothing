@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
 	"strconv"
 
 	"github.com/viper-00/nothing/internal/alertstatus"
@@ -209,4 +210,95 @@ func (mysql *MySql) GetPreviousOpenAlert(alertStatus *alertstatus.AlertStatus) [
 	}
 
 	return table.Data[0]
+}
+
+func (mysql *MySql) SetAlertEndLog(alertStatue *alertstatus.AlertStatus, startEventId string) error {
+	serverId := mysql.getServerId(alertStatue.Server)
+	if len(serverId) == 0 {
+		err := fmt.Errorf("server %s not registered", alertStatue.Server)
+		logger.Log("ERROR", err.Error())
+		return err
+	}
+
+	stmt, err := mysql.DB.Prepare("UPDATE alert SET end_log_id = ? WHERE server_id = ? AND start_log_id = ?")
+	if err != nil {
+		mysql.SqlErr = err
+		logger.Log("ERROR", err.Error())
+		return err
+	}
+
+	defer stmt.Close()
+
+	_, err = stmt.Exec(alertStatue.StartEvent, serverId, startEventId)
+	if err != nil {
+		mysql.SqlErr = err
+		logger.Log("ERROR", err.Error())
+		return err
+	}
+
+	return nil
+}
+
+func (mysql *MySql) UpdateAlert(alertStatus *alertstatus.AlertStatus, startEventId string) error {
+	serverId := mysql.getServerId(alertStatus.Server)
+	if len(serverId) == 0 {
+		err := fmt.Errorf("server %s not registered", alertStatus.Server)
+		logger.Log("ERROR", err.Error())
+		return err
+	}
+
+	stmt, err := mysql.DB.Prepare("UPDATE alert SET type = ?, expected = ?, actual = ? WHERE server_id = ? AND start_log_id = ?")
+	if err != nil {
+		mysql.SqlErr = err
+		logger.Log("ERROR", err.Error())
+		return err
+	}
+
+	defer stmt.Close()
+
+	expectedValue := alertStatus.Alert.WarnThreshold
+	if alertStatus.Type == alertstatus.Critical {
+		expectedValue = alertStatus.Alert.CriticalThreshold
+	}
+
+	_, err = stmt.Exec(alertStatus.Type, expectedValue, alertStatus.Value, serverId, startEventId)
+	if err != nil {
+		mysql.SqlErr = err
+		logger.Log("ERROR", err.Error())
+		return err
+	}
+
+	return nil
+}
+
+func (mysql *MySql) AddAlert(alertStatus *alertstatus.AlertStatus) error {
+	serverId := mysql.getServerId(alertStatus.Server)
+	if len(serverId) == 0 {
+		err := fmt.Errorf("server %s not registered", alertStatus.Server)
+		logger.Log("ERROR", err.Error())
+		return err
+	}
+
+	stmt, err := mysql.DB.Prepare("INSERT INTO alert (server_id, type, expected, actual, time, start_log_id) VALUES (?, ?, ?, ?, ?, ?)")
+	if err != nil {
+		mysql.SqlErr = err
+		logger.Log("ERROR", err.Error())
+		return err
+	}
+
+	defer stmt.Close()
+
+	expectedValue := alertStatus.Alert.WarnThreshold
+	if alertStatus.Type == alertstatus.Critical {
+		expectedValue = alertStatus.Alert.CriticalThreshold
+	}
+
+	_, err = stmt.Exec(serverId, alertStatus.Type, expectedValue, alertStatus.Value, alertStatus.UnixTime, alertStatus.StartEvent)
+	if err != nil {
+		mysql.SqlErr = err
+		logger.Log("ERROR", err.Error())
+		return err
+	}
+
+	return nil
 }

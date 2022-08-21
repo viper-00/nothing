@@ -247,3 +247,18 @@ func (r *Result) Add(col string, op string, operand interface{}) *Result {
 	r.RowCount = len(res.Rows)
 	return r
 }
+
+func (r *Result) Delete() {
+	if len(r.Rows) == 0 {
+		return
+	}
+
+	r.Db.Tables[r.TableName].Lock()
+	defer r.Db.Tables[r.TableName].Unlock()
+
+	for _, resultRow := range r.Rows {
+		delete(r.Db.Tables[r.TableName].Rows, resultRow.Id)
+	}
+
+	r.Db.Tables[r.TableName].RowCount = len(r.Db.Tables[r.TableName].Rows)
+}
