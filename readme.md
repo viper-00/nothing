@@ -20,13 +20,13 @@ Nothing 是一个用 Go 编写的简单的 Linux 系统监控工具。Nothing �
 
 ### 屏幕截图
 
-<!-- <img src="https://github.com/dhamith93/SyMon/blob/master/png/01.png?raw=true" width="400" />
+<img src="https://github.com/dhamith93/SyMon/blob/master/png/01.png?raw=true" width="400" />
 <img src="https://github.com/dhamith93/SyMon/blob/master/png/02.png?raw=true" width="400" />
 <img src="https://github.com/dhamith93/SyMon/blob/master/png/03.png?raw=true" width="400" />
 <img src="https://github.com/dhamith93/SyMon/blob/master/png/04.png?raw=true" width="400" />
 <img src="https://github.com/dhamith93/SyMon/blob/master/png/05.png?raw=true" width="400" />
 <img src="https://github.com/dhamith93/SyMon/blob/master/png/06.png?raw=true" width="400" />
-<img src="https://github.com/dhamith93/SyMon/blob/master/png/07.png?raw=true" width="400" /> -->
+<img src="https://github.com/dhamith93/SyMon/blob/master/png/07.png?raw=true" width="400" />
 
 ## 自定义
 
