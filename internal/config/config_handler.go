@@ -13,6 +13,7 @@ type Config struct {
 	CollectorEndpoint           string
 	AlertEndpointCACertPath     string
 	AlertEndpoint               string
+	MonitorIntervalSeconds      int
 }
 
 func GetConfig(path string) Config {
