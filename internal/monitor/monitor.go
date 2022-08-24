@@ -1,6 +1,9 @@
 package monitor
 
-import "github.com/dhamith93/systats"
+import (
+	"github.com/dhamith93/systats"
+	"github.com/viper-00/nothing/internal/logger"
+)
 
 const (
 	SYSTEN     string = "system"
@@ -23,4 +26,14 @@ type Service struct {
 type Processes struct {
 	CPU    []systats.Process
 	Memory []systats.Process
+}
+
+// GetSystem returns a systats.SyStats struct with system info
+func GetSystem(syStats *systats.SyStats) systats.System {
+	system, err := syStats.GetSystem()
+	if err != nil {
+		logger.Log("error", err.Error())
+	}
+
+	return system
 }

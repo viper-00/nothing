@@ -1,15 +1,28 @@
 package main
 
 import (
+	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"sync"
 	"time"
 
+	"github.com/dhamith93/systats"
+	"github.com/viper-00/nothing/internal/api"
+	"github.com/viper-00/nothing/internal/auth"
 	"github.com/viper-00/nothing/internal/config"
+	"github.com/viper-00/nothing/internal/logger"
 	"github.com/viper-00/nothing/internal/monitor"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/internal/metadata"
+	"google.golang.org/grpc/metadata"
 )
 
 func main() {
@@ -86,9 +99,83 @@ func main() {
 }
 
 func initAgent(config *config.Config) {
+	conn, c, ctx, cancel := createClient(config)
+	if conn == nil {
+		logger.Log("error", "error crating connection")
+		return
+	}
 
+	defer conn.Close()
+	defer cancel()
+
+	syStats := systats.New()
+	response, err := c.InitAgent(ctx, &api.ServerInfo{
+		ServerName: config.ServerId,
+		Timezone:   monitor.GetSystem(&syStats).TimeZone,
+	})
+
+	if err != nil {
+		logger.Log("error", "error adding agent: "+err.Error())
+		os.Exit(1)
+	}
+	fmt.Printf("%s \n", response.Body)
 }
 
 func sendCustomMetric(name, unit, value string, config *config.Config) {
 
+}
+
+func createClient(config *config.Config) (*grpc.ClientConn, api.MonitorDataServiceClient, context.Context, context.CancelFunc) {
+	var (
+		conn     *grpc.ClientConn
+		tlsCreds credentials.TransportCredentials
+		err      error
+	)
+
+	if len(config.CollectorEndpointCACertPath) > 0 {
+		tlsCreds, err = loadTLSCreds(config)
+		if err != nil {
+			log.Fatal("cannot load TLS credentials: ", err)
+		}
+		conn, err = grpc.Dial(config.CollectorEndpoint, grpc.WithTransportCredentials(tlsCreds))
+	} else {
+		conn, err = grpc.Dial(config.CollectorEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	}
+
+	if err != nil {
+		logger.Log("error", "connection error: "+err.Error())
+		return nil, nil, nil, nil
+	}
+
+	c := api.NewMonitorDataServiceClient(conn)
+	token := generateToken()
+	ctx, cancel := context.WithTimeout(metadata.NewOutgoingContext(context.Background(), metadata.New(map[string]string{"jwt": token})), time.Second*10)
+	return conn, c, ctx, cancel
+}
+
+func loadTLSCreds(config *config.Config) (credentials.TransportCredentials, error) {
+	cert, err := ioutil.ReadFile(config.CollectorEndpointCACertPath)
+	if err != nil {
+		return nil, err
+	}
+
+	certPool := x509.NewCertPool()
+	if !certPool.AppendCertsFromPEM(cert) {
+		return nil, fmt.Errorf("failed to add server CA cert")
+	}
+
+	tlsConfig := &tls.Config{
+		RootCAs: certPool,
+	}
+
+	return credentials.NewTLS(tlsConfig), nil
+}
+
+func generateToken() string {
+	token, err := auth.GenerateJWT()
+	if err != nil {
+		logger.Log("error", "error generating token: "+err.Error())
+		os.Exit(1)
+	}
+	return token
 }

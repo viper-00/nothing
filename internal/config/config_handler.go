@@ -14,6 +14,15 @@ type Config struct {
 	AlertEndpointCACertPath     string
 	AlertEndpoint               string
 	MonitorIntervalSeconds      int
+
+	ServerId string
+	Services []ServiceToMonitor
+}
+
+// ServiceToMonitor holds service info from config.json
+type ServiceToMonitor struct {
+	Name        string
+	ServiceName string
 }
 
 func GetConfig(path string) Config {
