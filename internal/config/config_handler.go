@@ -17,6 +17,8 @@ type Config struct {
 
 	ServerId string
 	Services []ServiceToMonitor
+
+	DisksTOIgnore string
 }
 
 // ServiceToMonitor holds service info from config.json

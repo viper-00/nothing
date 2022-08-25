@@ -4,11 +4,13 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -21,7 +23,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/internal/metadata"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -122,7 +123,34 @@ func initAgent(config *config.Config) {
 }
 
 func sendCustomMetric(name, unit, value string, config *config.Config) {
+	customMetric := monitor.CustomMetric{
+		Name:     name,
+		Unit:     unit,
+		Value:    value,
+		Time:     strconv.FormatInt(time.Now().Unix(), 10),
+		ServerId: config.ServerId,
+	}
 
+	jsonData, err := json.Marshal(&customMetric)
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	conn, c, ctx, cancel := createClient(config)
+	if conn == nil {
+		logger.Log("error", "error creating connection")
+		return
+	}
+
+	defer conn.Close()
+	defer cancel()
+
+	_, err = c.HandleCustomMonitorData(ctx, &api.MonitorData{MonitorData: string(jsonData)})
+	if err != nil {
+		logger.Log("error", "error sending custom data: "+err.Error())
+		os.Exit(1)
+	}
 }
 
 func createClient(config *config.Config) (*grpc.ClientConn, api.MonitorDataServiceClient, context.Context, context.CancelFunc) {
@@ -178,4 +206,35 @@ func generateToken() string {
 		os.Exit(1)
 	}
 	return token
+}
+
+func sendMonitorData(monitorData string, config *config.Config) {
+	conn, c, ctx, cancel := createClient(config)
+	if conn == nil {
+		logger.Log("error", "error creating connection")
+		return
+	}
+	defer conn.Close()
+	defer cancel()
+
+	_, err := c.HandleMonitorData(ctx, &api.MonitorData{MonitorData: monitorData})
+	if err != nil {
+		logger.Log("error", "error sending data: "+err.Error())
+	}
+}
+
+func sendPing(config *config.Config) {
+	conn, c, ctx, cancel := createClient(config)
+	if conn == nil {
+		logger.Log("error", "error creating connection")
+		return
+	}
+
+	defer conn.Close()
+	defer cancel()
+
+	_, err := c.HandlePing(ctx, &api.ServerInfo{ServerName: config.ServerId})
+	if err != nil {
+		logger.Log("error", "error sending ping: "+err.Error())
+	}
 }
