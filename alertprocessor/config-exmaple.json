@@ -1,0 +1,8 @@
+{
+    "Port": "",
+    "TLSEnabled": false,
+    "CertPath": "",
+	"KeyPath": "",
+    "LogFileEnabled": false,
+    "LogFilePath": ""
+}
