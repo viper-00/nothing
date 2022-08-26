@@ -14,6 +14,9 @@ type Config struct {
 	AlertEndpointCACertPath     string
 	AlertEndpoint               string
 	MonitorIntervalSeconds      int
+	TLSEnabled                  bool
+	CertPath                    string
+	KeyPath                     string
 
 	ServerId string
 	Services []ServiceToMonitor
