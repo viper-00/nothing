@@ -47,11 +47,61 @@ func handlePing(serverName string, config *config.Config) error {
 }
 
 func (s *Server) IsUp(ctx context.Context, info *ServerInfo) (*IsActive, error) {
-	return nil, nil
+	config := config.GetConfig("config.json")
+	upAddRunning, err := isUp(info.ServerName, &config)
+	if err != nil {
+		return &IsActive{IsUp: false}, err
+	}
+
+	return &IsActive{IsUp: upAddRunning}, nil
+}
+
+func isUp(serverName string, config *config.Config) (bool, error) {
+	mysql := getMySQLConnection(config)
+	defer mysql.Close()
+
+	serverPingTimeStr, err := mysql.ServerPingTime(serverName)
+	if err != nil {
+		return false, fmt.Errorf("error loading ping time of %s", serverName)
+	}
+
+	serverPingTime, err := strconv.ParseInt(serverPingTimeStr, 10, 64)
+	if err != nil {
+		logger.Log("error", err.Error())
+		return false, fmt.Errorf("error loading ping time of %s", serverName)
+	}
+
+	return time.Now().Unix()-serverPingTime <= 61, nil
 }
 
 func (s *Server) InitAgent(ctx context.Context, info *ServerInfo) (*Message, error) {
-	return nil, nil
+	config := config.GetConfig("config.json")
+	err := initAgent(info.ServerName, info.Timezone, &config)
+	if err != nil {
+		return &Message{Body: err.Error()}, err
+	}
+
+	return &Message{Body: "agent added"}, nil
+}
+
+func initAgent(serverName, timeZone string, config *config.Config) error {
+	logger.Log("info", "Initializing agent for "+serverName)
+
+	mysql := getMySQLConnection(config)
+	defer mysql.Close()
+
+	if mysql.AgentIDExists(serverName) {
+		logger.Log("error", "agent id "+serverName+" exists")
+		return fmt.Errorf("agent id " + serverName + " exists")
+	}
+
+	err := mysql.AddAgent(serverName, timeZone)
+	if err != nil {
+		logger.Log("error", err.Error())
+		return fmt.Errorf("error adding agent")
+	}
+
+	return nil
 }
 
 func (s *Server) HandleMonitorData(ctx context.Context, data *MonitorData) (*Message, error) {

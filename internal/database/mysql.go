@@ -365,3 +365,39 @@ func (mysql *MySql) Ping(serverName, unixTime string) error {
 
 	return nil
 }
+
+func (mysql *MySql) ServerPingTime(serverName string) (string, error) {
+	serverId := mysql.getServerId(serverName)
+	if len(serverId) == 0 {
+		err := fmt.Errorf("server %s not registered", serverName)
+		logger.Log("ERROR", err.Error())
+		return "", err
+	}
+
+	res := mysql.monitorDataSelect("SELECT time FROM server_ping_time WHERE server_id = ?", serverId)
+	if len(res) == 0 {
+		return "", fmt.Errorf("cannot load ping time for %s", serverName)
+	}
+
+	return res[0], nil
+}
+
+func (mysql *MySql) AddAgent(serverName, timeZone string) error {
+	stmt, err := mysql.DB.Prepare("INSERT INTO server (name, timezone) VALUES (?, ?)")
+	if err != nil {
+		mysql.SqlErr = err
+		logger.Log("ERROR", err.Error())
+		return err
+	}
+
+	defer stmt.Close()
+
+	_, err = stmt.Exec(serverName, timeZone)
+	if err != nil {
+		mysql.SqlErr = err
+		logger.Log("ERROR", err.Error())
+		return err
+	}
+
+	return nil
+}
