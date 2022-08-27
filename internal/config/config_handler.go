@@ -22,6 +22,10 @@ type Config struct {
 	Services []ServiceToMonitor
 
 	DisksTOIgnore string
+
+	MySQLUserName     string
+	MySQLHost         string
+	MySQLDatabaseName string
 }
 
 // ServiceToMonitor holds service info from config.json

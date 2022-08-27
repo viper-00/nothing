@@ -324,3 +324,44 @@ func (mysql *MySql) PurgeMonitorDataOlderThan(unixTime string) (int64, error) {
 
 	return res.RowsAffected()
 }
+
+func (mysql *MySql) Ping(serverName, unixTime string) error {
+	insertQuery := "INSERT INTO server_ping_time (time, server_id) VALUES (?, ?)"
+	updateQuery := "UPDATE server_ping_time SET time = ? WHERE server_id = ?"
+
+	serverId := mysql.getServerId(serverName)
+	if len(serverId) == 0 {
+		err := fmt.Errorf("server %s not registered", serverName)
+		logger.Log("ERROR", err.Error())
+		return err
+	}
+
+	var (
+		err  error
+		stmt *sql.Stmt
+	)
+
+	res := mysql.monitorDataSelect("SELECT id FROM server_ping_time WHERE server_id = ?", serverId)
+	if len(res) == 0 {
+		stmt, err = mysql.DB.Prepare(insertQuery)
+	} else {
+		stmt, err = mysql.DB.Prepare(updateQuery)
+	}
+
+	if err != nil {
+		mysql.SqlErr = err
+		logger.Log("ERROR", err.Error())
+		return err
+	}
+
+	defer stmt.Close()
+
+	_, err = stmt.Exec(unixTime, serverId)
+	if err != nil {
+		mysql.SqlErr = err
+		logger.Log("ERROR", err.Error())
+		return err
+	}
+
+	return nil
+}
