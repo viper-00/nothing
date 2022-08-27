@@ -262,3 +262,21 @@ func (r *Result) Delete() {
 
 	r.Db.Tables[r.TableName].RowCount = len(r.Db.Tables[r.TableName].Rows)
 }
+
+func (r *Result) Update(col string, value interface{}) {
+	if len(r.Rows) == 0 {
+		return
+	}
+
+	r.Db.Tables[r.TableName].Lock()
+	defer r.Db.Tables[r.TableName].Unlock()
+	for _, resultRow := range r.Rows {
+		oldCol := r.Db.Tables[r.TableName].Rows[resultRow.Id].Columns[col]
+		newCol, err := buildColumn(value, oldCol.Type, oldCol)
+		if err != nil {
+			r.Error = err
+			return
+		}
+		r.Db.Tables[r.TableName].Rows[resultRow.Id].Columns[col] = newCol
+	}
+}
