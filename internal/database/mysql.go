@@ -401,3 +401,40 @@ func (mysql *MySql) AddAgent(serverName, timeZone string) error {
 
 	return nil
 }
+
+func (mysql *MySql) SaveLogToDB(serverName, unixTime, jsonStr, logType, logName string, isCustomMetric bool) error {
+	serverId := mysql.getServerId(serverName)
+	if len(serverId) == 0 {
+		err := fmt.Errorf("server %s not registered", serverName)
+		logger.Log("ERROR", err.Error())
+		return err
+	}
+
+	var (
+		stmt *sql.Stmt
+		err  error
+	)
+
+	if isCustomMetric {
+		stmt, err = mysql.DB.Prepare("INSERT INTO custom_metrics (server_id, log_time, log_type, log_name, log_text) VALUES (?, ?, ?, ?, ?)")
+	} else {
+		stmt, err = mysql.DB.Prepare("INSERT INTO system_metrics (server_id, log_time, log_type, log_name, log_text) VALUES (?, ?, ?, ?, ?)")
+	}
+
+	if err != nil {
+		mysql.SqlErr = err
+		logger.Log("ERROR", err.Error())
+		return err
+	}
+
+	defer stmt.Close()
+
+	_, err = stmt.Exec(serverId, unixTime, logType, logName, jsonStr)
+	if err != nil {
+		mysql.SqlErr = err
+		logger.Log("ERROR", err.Error())
+		return err
+	}
+
+	return nil
+}

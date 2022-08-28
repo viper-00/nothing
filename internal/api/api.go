@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 	"github.com/viper-00/nothing/internal/config"
 	"github.com/viper-00/nothing/internal/database"
 	"github.com/viper-00/nothing/internal/logger"
+	"github.com/viper-00/nothing/internal/monitor"
 )
 
 type Server struct{}
@@ -105,7 +107,76 @@ func initAgent(serverName, timeZone string, config *config.Config) error {
 }
 
 func (s *Server) HandleMonitorData(ctx context.Context, data *MonitorData) (*Message, error) {
-	return nil, nil
+	var monitorData = monitor.MonitorData{}
+	err := json.Unmarshal([]byte(data.MonitorData), &monitorData)
+	if err != nil {
+		return &Message{Body: err.Error()}, err
+	}
+
+	err = handleMonitorData(&monitorData)
+	if err != nil {
+		return &Message{Body: err.Error()}, err
+	}
+
+	return &Message{Body: "ok"}, nil
+}
+
+func handleMonitorData(monitorData *monitor.MonitorData) error {
+	serverName := monitorData.ServerId
+	time := monitorData.UnixTime
+	config := config.GetConfig("config.json")
+	mysql := getMySQLConnection(&config)
+	defer mysql.Close()
+
+	data := make(map[string]interface{})
+	data["system"] = &monitorData.System
+	data["memory"] = &monitorData.Memory
+	data["swap"] = &monitorData.Swap
+	data["procUsage"] = &monitorData.ProcUsage
+	data["processes"] = &monitorData.Processes
+
+	for key, item := range data {
+		err := saveToDB(item, mysql, serverName, time, key, "")
+		if err != nil {
+			return err
+		}
+	}
+
+	for _, disk := range monitorData.Disk {
+		err := saveToDB(disk, mysql, serverName, time, monitor.DISKS, disk.FileSystem)
+		if err != nil {
+			return err
+		}
+	}
+
+	for _, service := range monitorData.Services {
+		err := saveToDB(service, mysql, serverName, time, monitor.SERVICES, service.Name)
+		if err != nil {
+			return err
+		}
+	}
+
+	for _, network := range monitorData.Networks {
+		err := saveToDB(network, mysql, serverName, time, monitor.NETWORKS, network.Interface)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func saveToDB(item interface{}, mysql database.MySql, serverName, time, key, logName string) error {
+	res, err := json.Marshal(item)
+	if err != nil {
+		return err
+	}
+
+	err = mysql.SaveLogToDB(serverName, time, string(res), key, logName, false)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Server) HandleCustomMonitorData(ctx context.Context, data *MonitorData) (*Message, error) {
