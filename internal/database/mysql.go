@@ -479,5 +479,10 @@ func (mysql *MySql) GetLogFromDBCount(tableName, serverId, logType string, count
 }
 
 func (mysql *MySql) GetCustomMetricNames(serverName string) []string {
-	return nil
+	serverId := mysql.getServerId(serverName)
+	return mysql.monitorDataSelect("SELECT DISTINCT log_type FROM custom_metrics WHERE server_id = ?", serverId)
+}
+
+func (mysql *MySql) GetAgents() []string {
+	return mysql.monitorDataSelect("SELECT DISTINCT name FROM server WHERE name != 'collector'")
 }

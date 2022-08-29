@@ -279,7 +279,21 @@ func (s *Server) HandleCustomMetricNameRequest(ctx context.Context, info *Server
 }
 
 func (s *Server) HandleAgentIdsRequest(ctx context.Context, void *Void) (*Message, error) {
-	return nil, nil
+	config := config.GetConfig("config.json")
+	mysql := getMySQLConnection(&config)
+	defer mysql.Close()
+
+	agents := Agents{}
+	agents.AgentIDs = mysql.GetAgents()
+	if len(agents.AgentIDs) == 0 {
+		return &Message{Body: "no data found"}, fmt.Errorf("no data found")
+	}
+
+	out, err := json.Marshal(agents)
+	if err != nil {
+		return &Message{Body: "cannot parse data"}, fmt.Errorf("cannot parse data")
+	}
+	return &Message{Body: string(out)}, nil
 }
 
 func (s *Server) mustEmbedUnimplementedMonitorDataServiceServer() {}
