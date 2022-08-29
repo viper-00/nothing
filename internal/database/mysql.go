@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/viper-00/nothing/internal/alertstatus"
 	"github.com/viper-00/nothing/internal/fileops"
@@ -436,5 +437,47 @@ func (mysql *MySql) SaveLogToDB(serverName, unixTime, jsonStr, logType, logName 
 		return err
 	}
 
+	return nil
+}
+
+func (mysql *MySql) GetLogFromDB(serverName, logType string, from, to, time int64, isCustomMetric bool) []string {
+	serverId := mysql.getServerId(serverName)
+	tableName := "system_metrics"
+	if isCustomMetric {
+		tableName = "custom_metrics"
+	}
+
+	if from > 0 && to > 0 {
+		return mysql.getLogFromDBInRange(tableName, serverId, logType, from, to)
+	} else if time > 0 {
+		return mysql.getLogFromDBAt(tableName, serverId, logType, time)
+	} else {
+		return mysql.GetLogFromDBCount(tableName, serverId, logType, 1)
+	}
+}
+
+func (mysql *MySql) getLogFromDBInRange(tableName, serverId, logType string, from, to int64) []string {
+	query := "SELECT log_text FROM system_metrics WHERE server_id = ? AND log_type = ? AND log_time BETWEEN ? AND ? ORDER BY log_time"
+	if logType == monitor.DISKS || logType == monitor.NETWORKS || logType == monitor.SERVICES {
+		query = "SELECT JSON_ARRAYAGG(log_text ORDER BY id) FROM #TBL# WHERE server_id = ? AND log_type = ? AND log_time = ? BETWEEN ? AND ? GROUP BY log_time ORDER BY log_time"
+	}
+	query = strings.Replace(query, "#TBL#", tableName, -1)
+	return mysql.monitorDataSelect(query, serverId, logType, from, to)
+}
+
+func (mysql *MySql) getLogFromDBAt(tableName, serverId, logType string, time int64) []string {
+	query := "SELECT log_text FROM #TBL# WHERE server_id = ? AND log_type = ? AND log_time = ?"
+	query = strings.Replace(query, "#TBL#", tableName, -1)
+	return mysql.monitorDataSelect(query, serverId, logType, time)
+}
+
+func (mysql *MySql) GetLogFromDBCount(tableName, serverId, logType string, count int) []string {
+	if logType == monitor.DISKS || logType == monitor.NETWORKS || logType == monitor.SERVICES {
+		return mysql.monitorDataSelect(strings.Replace("SELECT JSON_ARRAYAGG(log_text ORDER BY id) FROM #TBL# WHERE server_id = ? AND log_type = ? GROUP BY log_time ORDER BY log_time DESC LIMIT ?", "#TBL#", tableName, -1), serverId, logType, count)
+	}
+	return mysql.monitorDataSelect(strings.Replace("SELECT log_text FROM #TBL# WHERE server_id = ? AND log_type = ? ORDER BY log_time DESC LIMIT ?", "#TBL#", tableName, -1), serverId, logType, count)
+}
+
+func (mysql *MySql) GetCustomMetricNames(serverName string) []string {
 	return nil
 }

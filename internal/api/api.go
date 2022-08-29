@@ -12,6 +12,7 @@ import (
 	"github.com/viper-00/nothing/internal/database"
 	"github.com/viper-00/nothing/internal/logger"
 	"github.com/viper-00/nothing/internal/monitor"
+	"github.com/viper-00/nothing/internal/stringops"
 )
 
 type Server struct{}
@@ -180,15 +181,101 @@ func saveToDB(item interface{}, mysql database.MySql, serverName, time, key, log
 }
 
 func (s *Server) HandleCustomMonitorData(ctx context.Context, data *MonitorData) (*Message, error) {
-	return nil, nil
+	var customMetric = monitor.CustomMetric{}
+	err := json.Unmarshal([]byte(data.MonitorData), &customMetric)
+	if err != nil {
+		return &Message{Body: err.Error()}, err
+	}
+	err = handleCustomMetric(&customMetric)
+	if err != nil {
+		return &Message{Body: err.Error()}, err
+	}
+	return &Message{Body: "ok"}, nil
+}
+
+func handleCustomMetric(customMetric *monitor.CustomMetric) error {
+	serverName := customMetric.ServerId
+	time := customMetric.Time
+
+	config := config.GetConfig("config.json")
+	mysql := getMySQLConnection(&config)
+	defer mysql.Close()
+
+	res, err := json.Marshal(&customMetric)
+	if err != nil {
+		return err
+	}
+	return mysql.SaveLogToDB(serverName, time, string(res), customMetric.Name, "", true)
 }
 
 func (s *Server) HandleMonitorDataRequest(ctx context.Context, data *MonitorDataRequest) (*MonitorData, error) {
-	return nil, nil
+	config := config.GetConfig("config.json")
+	convertToJsonArr := false
+
+	switch data.LogType {
+	case "networks", "procUsage":
+		convertToJsonArr = true
+	case "memory-historical":
+		convertToJsonArr = true
+		data.LogType = "memory"
+	}
+
+	monitorData := getMonitorLogs(&config, data.ServerName, data.LogType, data.From, data.To, data.Time, data.IsCustomMetric, convertToJsonArr)
+	if len(monitorData) == 0 {
+		return &MonitorData{MonitorData: "no data"}, fmt.Errorf("no data found")
+	}
+
+	return &MonitorData{MonitorData: monitorData}, nil
+}
+
+func getMonitorLogs(config *config.Config, serverName, logType string, from, to, time int64, isCustomMetric, convertToJsonArr bool) string {
+	mysql := getMySQLConnection(config)
+	defer mysql.Close()
+
+	data := mysql.GetLogFromDB(serverName, logType, from, to, time, isCustomMetric)
+	if (convertToJsonArr || (to != 0 && from != 0)) && logType != "system" {
+		if logType == monitor.DISKS || logType == monitor.NETWORKS || logType == monitor.SERVICES {
+			var arr []string
+			for _, row := range data {
+				var newData []string
+				_ = json.Unmarshal([]byte(row), &newData)
+				arr = append(arr, stringops.StringArrToJSONArr(newData))
+			}
+			return stringops.StringArrToJSONArr(arr)
+		}
+		return stringops.StringArrToJSONArr(data)
+	} else {
+		if len(data) == 0 {
+			return ""
+		}
+
+		if logType == monitor.DISKS || logType == monitor.NETWORKS || logType == monitor.SERVICES {
+			var arr []string
+			_ = json.Unmarshal([]byte(data[0]), &arr)
+			return stringops.StringArrToJSONArr(arr)
+		}
+
+		return data[0]
+	}
 }
 
 func (s *Server) HandleCustomMetricNameRequest(ctx context.Context, info *ServerInfo) (*Message, error) {
-	return nil, nil
+	config := config.GetConfig("config.json")
+	mysql := getMySQLConnection(&config)
+	defer mysql.Close()
+
+	customMetrics := CustomMetrics{}
+	customMetrics.CustomMetrics = mysql.GetCustomMetricNames(info.ServerName)
+	if len(customMetrics.CustomMetrics) == 0 {
+		return &Message{Body: "no data"}, fmt.Errorf("no data found")
+	}
+
+	out, err := json.Marshal(customMetrics)
+	if err != nil {
+		return &Message{Body: "cannot parse data of customMetrics"}, fmt.Errorf("cannot parse data of customMetrics")
+	}
+
+	return &Message{Body: string(out)}, nil
 }
 
 func (s *Server) HandleAgentIdsRequest(ctx context.Context, void *Void) (*Message, error) {
